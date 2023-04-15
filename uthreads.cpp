@@ -6,7 +6,7 @@
 #include <unordered_map>
 
 
-Scheduler* scheduler;
+Scheduler *scheduler;
 std::unordered_map<int, Thread *> threads;
 std::unordered_map<int, Thread *> blocked_threads;
 
@@ -15,22 +15,25 @@ int uthread_init(int quantum_usecs) {
     if (quantum_usecs <= 0) {
         return -1;
     }
-    //init the main thread
 
-//    threads = std::unordered_map<int, Thread*>();
-//    blocked_threads = std::unordered_map<int, Thread*>();
 
     Thread *main_thread = new Thread(RUNNING);
     threads[0] = main_thread;
 
 
-    Scheduler* scheduler = new Scheduler(quantum_usecs, main_thread);
+    scheduler = new Scheduler(quantum_usecs, main_thread);
     return 0;
 }
 
 
 int uthread_spawn(thread_entry_point entry_point) {
-    Thread *new_thread = new Thread(READY, entry_point);
+    Thread *new_thread;
+    try {
+        new_thread = new Thread(READY, entry_point);
+    }
+    catch (no_available_tids_exception e) {
+        return -1;
+    }
     if (!Scheduler::add(new_thread)) {
         return -1;
     }
@@ -44,9 +47,19 @@ int uthread_terminate(int tid) {
         delete scheduler;
         exit(0);
     }
-
-    if (!Scheduler::remove(tid)) {
+    if (threads.find(tid) == threads.end())
         return -1;
+    Thread *thread = threads[tid];
+
+    threads.erase(tid);
+
+
+    if (tid == uthread_get_tid()) {
+        thread->set_state(TERMINATED);
+        scheduler->reset_timer();
+    } else {
+        Scheduler::remove(thread->get_id());
+        delete thread;
     }
     return 0;
 }
@@ -56,26 +69,40 @@ int uthread_block(int tid) {
     if (tid == 0 || threads[tid] == nullptr) {
         return -1;
     }
+
     Thread *thread = threads[tid];
     thread->set_state(BLOCKED);
-    Scheduler::remove(tid);
-    blocked_threads[tid] = thread;
+    Scheduler::block_thread(thread);
+    if (tid == uthread_get_tid()) {
+        scheduler->reset_timer();
+    }
     return 0;
 }
 
 
 int uthread_resume(int tid) {
-    if (threads[tid] == nullptr) {
+    if (threads[tid] == nullptr)
         return -1;
-    }
+    if (tid == uthread_get_tid())
+        return 0;
     Thread *thread = threads[tid];
     thread->set_state(READY);
-    Scheduler::add(thread);
-    blocked_threads.erase(tid);
+    Scheduler::resume_thread(thread);
     return 0;
 }
 
 int uthread_sleep(int num_quantums) {
+    int id = uthread_get_tid();
+    Thread *thread = threads[id];
+    if (thread->is_sleeping() || id == 0)
+        return -1;
+
+    thread->set_sleep_quantum(num_quantums + 1);
+    Scheduler::sleep_thread(thread);
+
+    scheduler->reset_timer();
+
+
     return 0;
 }
 
@@ -85,11 +112,8 @@ int uthread_get_tid() {
 }
 
 int uthread_get_total_quantums() {
-    int total_quantums = 0;
-    for (auto it = threads.begin(); it != threads.end(); ++it) {
-        total_quantums += uthread_get_quantums(it->second->get_id());
-    }
-    return total_quantums;
+
+    return Scheduler::get_total_quantums();
 }
 
 

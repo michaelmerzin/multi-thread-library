@@ -1,8 +1,11 @@
-
+/*
+ * User-Level Threads Library (uthreads)
+ * Hebrew University OS course.
+ * Author: OS, os@cs.huji.ac.il
+ */
 
 #ifndef _UTHREADS_H
 #define _UTHREADS_H
-
 
 
 #define MAX_THREAD_NUM 100 /* maximal number of threads */

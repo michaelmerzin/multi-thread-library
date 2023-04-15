@@ -9,8 +9,7 @@ typedef unsigned long address_t;
 
 /* A translation is required when using an address of a variable.
    Use this as a black box in your code. */
-address_t translate_address(address_t addr)
-{
+address_t translate_address(address_t addr) {
     address_t ret;
     asm volatile("xor    %%fs:0x30,%0\n"
                  "rol    $0x11,%0\n"
@@ -18,6 +17,7 @@ address_t translate_address(address_t addr)
             : "0" (addr));
     return ret;
 }
+
 #else
 /* code for 32 bit Intel arch */
 
@@ -39,7 +39,7 @@ address_t translate_address(address_t addr)
 }
 #endif
 
-int arr[MAX_THREAD_NUM+1]={0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+int arr[MAX_THREAD_NUM] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
                            11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
                            21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
                            31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
@@ -48,30 +48,29 @@ int arr[MAX_THREAD_NUM+1]={0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
                            61, 62, 63, 64, 65, 66, 67, 68, 69, 70,
                            71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
                            81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
-                           91, 92, 93, 94, 95, 96, 97, 98, 99, 100};
+                           91, 92, 93, 94, 95, 96, 97, 98, 99};
 int N = sizeof(arr) / sizeof(arr[0]);
-priority_queue <int, vector<int>, greater<int>> Thread::heap_thread_ids(arr, arr + N);
-
-
-
-
-
+priority_queue<int, vector<int>, greater<int>> Thread::available_tids(arr, arr + N);
 
 
 Thread::Thread(State state, thread_entry_point entry_point) {
+    if (Thread::available_tids.empty())
+        throw no_available_tids_exception();
     this->quantum = 0;
-    this->thread_id = Thread::heap_thread_ids.top();
-    Thread::heap_thread_ids.pop();
+    this->thread_id = Thread::available_tids.top();
+    Thread::available_tids.pop();
     this->state = state;
     this->stack = new char[STACK_SIZE];
+    this->sleep_quantum = 0;
     this->setup_thread(this->thread_id, this->stack, entry_point);
 }
 
 Thread::Thread(State state) {
-    this->quantum = 0;
-    this->thread_id = Thread::heap_thread_ids.top();
-    Thread::heap_thread_ids.pop();
+    this->quantum = 1;
+    this->thread_id = Thread::available_tids.top();
+    Thread::available_tids.pop();
     this->state = state;
+    this->sleep_quantum = 0;
     sigsetjmp(env, 1);
 }
 
@@ -79,12 +78,12 @@ Thread::Thread(State state) {
 void Thread::set_state(State state) {
     if (state == RUNNING)
         quantum += 1;
-    this->state=state;
+    this->state = state;
 }
 
 Thread::~Thread() {
     delete[] stack;
-    Thread::heap_thread_ids.push(this->thread_id);
+    Thread::available_tids.push(this->thread_id);
 }
 
 
